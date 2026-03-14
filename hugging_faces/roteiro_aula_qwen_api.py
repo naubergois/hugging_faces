@@ -8,6 +8,8 @@ Uso: python roteiro_aula_qwen_api.py "Tema da aula"
 
 import argparse
 import os
+from typing import Optional
+
 import requests
 from dotenv import load_dotenv
 
@@ -100,6 +102,68 @@ Roteiro da aula:
                 raise RuntimeError(
                     "Modelo ainda está carregando na API. Aguarde ~20s e tente de novo."
                 )
+            raise RuntimeError(f"API temporariamente indisponível: {msg}")
+        raise RuntimeError(f"Erro na API ({response.status_code}): {msg}")
+
+    try:
+        return out["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError, TypeError):
+        if isinstance(out, dict) and "error" in out:
+            raise RuntimeError(out["error"])
+        return str(out).strip()
+
+
+def responder_pergunta_api(pergunta: str, token: Optional[str] = None) -> str:
+    """
+    Responde uma pergunta usando o modelo de chat (Qwen) via API Hugging Face.
+    Útil para question-answering após transcrição de voz.
+    """
+    token = (
+        token
+        or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        or os.environ.get("HF_TOKEN")
+    )
+    if not token:
+        raise ValueError(
+            "Defina HUGGING_FACE_HUB_TOKEN ou HF_TOKEN no .env ou no ambiente."
+        )
+    if not pergunta or not pergunta.strip():
+        raise ValueError("A pergunta não pode estar vazia.")
+
+    system = "Você é um assistente prestativo. Responda de forma clara e objetiva."
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {
+        "model": MODEL_ID,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": pergunta.strip()},
+        ],
+        "max_tokens": 1024,
+        "temperature": 0.5,
+        "stream": False,
+    }
+
+    response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
+    try:
+        out = response.json()
+    except Exception:
+        out = {}
+
+    if not response.ok:
+        err = out.get("error", out.get("message", response.text or f"HTTP {response.status_code}"))
+        if isinstance(err, dict):
+            msg = err.get("message", str(err))
+        else:
+            msg = str(err)
+        if response.status_code == 401:
+            raise RuntimeError(
+                "Token inválido ou não autorizado. Verifique o HUGGING_FACE_HUB_TOKEN no .env."
+            )
+        if response.status_code == 403:
+            raise RuntimeError("Acesso negado à API.")
+        if response.status_code == 429:
+            raise RuntimeError("Muitas requisições. Aguarde e tente novamente.")
+        if response.status_code == 503:
             raise RuntimeError(f"API temporariamente indisponível: {msg}")
         raise RuntimeError(f"Erro na API ({response.status_code}): {msg}")
 
