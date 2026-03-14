@@ -1,0 +1,6 @@
+{
+  "consulta_legislacao": {
+    "descricao": "Consulta a legislacao disponivel",
+    "instrucoes": "Consulta a legislacao e volta no formato json"
+  }
+}
